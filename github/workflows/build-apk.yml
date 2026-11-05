@@ -1,0 +1,55 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create Android project around main.dart
+        run: |
+          flutter create --platforms=android --project-name khashi_reader --org com.khashi .
+          cp main.dart lib/main.dart
+          rm -f test/widget_test.dart
+          flutter pub add flutter_tts google_fonts
+
+      - name: Patch AndroidManifest (internet, TTS, app name)
+        run: |
+          python3 - << 'PY'
+          import re, pathlib
+          p = pathlib.Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('<application',
+              '<uses-permission android:name="android.permission.INTERNET"/>\n'
+              '    <queries>\n'
+              '        <intent>\n'
+              '            <action android:name="android.intent.action.TTS_SERVICE"/>\n'
+              '        </intent>\n'
+              '    </queries>\n'
+              '    <application', 1)
+          s = re.sub(r'android:label="[^"]*"', 'android:label="قارئ النصوص الخاشع"', s, count=1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: khashi-reader-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
